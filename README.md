@@ -21,4 +21,7 @@ The system follows a multi-stage pipeline to ensure accurate data retrieval and 
 6. **Output:** Text-to-Speech converts the final text response back into audio for the user.
 
 📸 **Screenshots / Demos**
-*(Make sure your screenshot files are in your local folder, and link them here!)*
+<img width="1041" height="539" alt="Screenshot 2026-04-29 025800" src="https://github.com/user-attachments/assets/9fb998fd-b471-47f7-b7a6-515c2b7c7a23" />
+<img width="1044" height="472" alt="Screenshot 2026-04-29 025812" src="https://github.com/user-attachments/assets/48213827-daeb-4226-8808-2d75d2f1d8f3" />
+
+
