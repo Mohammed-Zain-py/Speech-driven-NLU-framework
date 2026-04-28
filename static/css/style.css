@@ -1,0 +1,10 @@
+#chat-container {
+    display: flex;
+    flex-direction: column;
+    height: 75vh; /* 75% of the viewport height */
+}
+
+#chat-box {
+    flex-grow: 1;
+    overflow-y: auto; /* Makes the chat box scrollable */
+}

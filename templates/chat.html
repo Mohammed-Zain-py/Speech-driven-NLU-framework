@@ -1,0 +1,126 @@
+{% extends "layout.html" %}
+{% block title %}Chat{% endblock %}
+{% block content %}
+
+{% if file_uploaded %}
+    <div class="alert alert-success" role="alert">
+        File uploaded successfully! You are now querying a dataset with the columns: <strong>{{ columns|join(', ') }}</strong>
+    </div>
+
+    <div class="card h-100" id="chat-container">
+        <div class="card-header">
+            Data Query Assistant
+        </div>
+        <div class="card-body" id="chat-box">
+            <div class="d-flex justify-content-start mb-3">
+                <div class="p-3 bg-light rounded">Data loaded. Please ask your questions.</div>
+            </div>
+        </div>
+        <div class="card-footer">
+            <form id="message-form">
+                <div class="input-group">
+                    <input type="text" class="form-control" id="user-input" placeholder="e.g., How many rows are there?" autocomplete="off">
+                    <button class="btn btn-primary" type="submit">Send</button>
+                    <button class="btn btn-secondary" type="button" id="micButton">🎤</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <script>
+        const chatBox = document.getElementById('chat-box');
+        const messageForm = document.getElementById('message-form');
+        const userInput = document.getElementById('user-input');
+        const micButton = document.getElementById('micButton');
+
+        messageForm.addEventListener('submit', function (event) {
+            event.preventDefault();
+            const userText = userInput.value.trim();
+            if (userText) {
+                addMessage(userText, 'user');
+                sendMessageToServer(userText);
+                userInput.value = '';
+            }
+        });
+
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (SpeechRecognition) {
+            const recognition = new SpeechRecognition();
+            micButton.addEventListener('click', () => recognition.start());
+            recognition.onstart = () => userInput.placeholder = "Listening...";
+            recognition.onend = () => userInput.placeholder = "e.g., How many rows are there?";
+            recognition.onerror = (event) => console.error("Speech recognition error", event.error);
+            recognition.onresult = (event) => {
+                const spokenText = event.results[0][0].transcript;
+                addMessage(spokenText, 'user');
+                sendMessageToServer(spokenText);
+            };
+        }
+
+        async function sendMessageToServer(messageText) {
+            try {
+                const response = await fetch('/get_response', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: messageText })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                
+                // Add the bot's text response to the chat window
+                addMessage(data.bot_text, 'bot');
+
+                // If an audio URL was successfully created, play the sound
+                if (data.audio_url) {
+                    const audio = new Audio(data.audio_url);
+                    audio.play();
+                }
+
+            } catch (error) {
+                console.error("Error fetching response:", error);
+                addMessage("Sorry, there was a problem connecting to the server.", 'bot');
+            }
+        }
+
+        function addMessage(text, sender) {
+            const messageWrapper = document.createElement('div');
+            const messageBubble = document.createElement('div');
+            messageWrapper.classList.add('d-flex', 'mb-3');
+            messageBubble.classList.add('p-3', 'rounded');
+            messageBubble.textContent = text;
+            if (sender === 'user') {
+                messageWrapper.classList.add('justify-content-end');
+                messageBubble.classList.add('bg-primary', 'text-white');
+            } else {
+                messageWrapper.classList.add('justify-content-start');
+                messageBubble.classList.add('bg-light');
+            }
+            messageWrapper.appendChild(messageBubble);
+            chatBox.appendChild(messageWrapper);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+    </script>
+
+{% else %}
+    <div class="row justify-content-center">
+        <div class="col-md-8 col-lg-6">
+            <div class="card mt-5 text-center">
+                <div class="card-header"><h3>Step 1: Upload Your Data</h3></div>
+                <div class="card-body">
+                    <p class="card-text">Please upload a CSV file to begin your analysis session.</p>
+                    <form action="{{ url_for('upload_file') }}" method="post" enctype="multipart/form-data">
+                        <div class="mb-3">
+                            <input class="form-control" type="file" name="file" accept=".csv" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Upload and Start</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endif %}
+{% endblock %}
