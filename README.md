@@ -2,7 +2,7 @@
 
 A web application that enables users to perform basic data analysis on CSV datasets using natural language through text and voice interaction.
 
-Developed as a final year project to explore how LLMs can reduce the data literacy gap for non-technical users by simplifying dataset exploration and analytical workflows.
+Developed as part of a final year project to explore how LLMs can reduce the data literacy gap by simplifying dataset exploration and analytical workflows.
 
 ---
 
@@ -10,7 +10,7 @@ Developed as a final year project to explore how LLMs can reduce the data litera
 
 Traditional data analysis tools often require familiarity with spreadsheets, SQL, programming, or BI platforms.
 
-This project allows users to upload a dataset and ask questions in natural language. The system interprets the request, generates executable Pandas operations, executes them on the uploaded data, and returns results as text, audio, and visual output.
+This project allows users to upload a dataset and ask questions in natural language. The system interprets the request, generates executable Pandas operations, executes them on the uploaded data, and returns responses through text, audio, and visual outputs.
 
 ---
 
@@ -18,9 +18,9 @@ This project allows users to upload a dataset and ask questions in natural langu
 
 ### Core Functionality
 
-* CSV dataset upload and session-based analysis
+* CSV dataset upload and analysis
 * Natural language analytics through text input
-* Voice-based interaction support
+* Voice-based interaction
 * Dynamic Pandas code generation and execution
 
 ### User Experience
@@ -33,10 +33,10 @@ This project allows users to upload a dataset and ask questions in natural langu
 ### V2 Improvements
 
 * Conversation memory using recent interactions
-* Multilingual support
+* Multilingual interaction support
 * In-chat data visualization
 
-### Monitoring
+### Monitoring and Evaluation
 
 * Admin dashboard
 * Conversation logging
@@ -85,35 +85,47 @@ Speech-driven-NLU-framework/
 ├── evaluate.py
 ├── check_models.py
 ├── requirements.txt
+├── README.md
 │
 ├── templates/
-├── static/
-└── README.md
+└── static/
 ```
 
 ---
 
 ## Setup
 
+Clone repository:
+
 ```bash
 git clone https://github.com/Mohammed-Zain-py/Speech-driven-NLU-framework.git
 
 cd Speech-driven-NLU-framework
+```
 
+Create environment:
+
+```bash
 python -m venv venv
+```
 
+Activate:
+
+```bash
 # Windows
 venv\Scripts\activate
 
-# Linux/macOS
+# Linux / macOS
 source venv/bin/activate
-
-pip install -r requirements.txt
-
-python app.py
 ```
 
-Create `.env`
+Install dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+Configure environment variables:
 
 ```env
 GEMINI_API_KEY=your_key
@@ -122,35 +134,37 @@ ADMIN_USER=your_admin
 ADMIN_PASS=your_password
 ```
 
+Run application:
+
+```bash
+python app.py
+```
+
 ---
 
-## Development Notes
+## Project Evolution
 
-This project went through multiple iterations during development.
+The project went through multiple iterations during development.
 
-Most changes focused on improving usability and expanding interaction modes. The largest changes between V1 and V2 were conversation memory, multilingual interaction, and integrated visualization support.
+Most iterations focused on improving usability and extending interaction modes. The largest changes between V1 and V2 introduced conversation memory, multilingual support, and integrated visualization capabilities.
 
 ---
 
 ## Future Improvements
 
-- Introduce sandboxed execution for generated code
-- Improve system scalability and deployment architecture
-- Redesign frontend experience for larger analytical workflows
-- Extend conversational memory capabilities
-- Support larger datasets and asynchronous processing
-- Add containerized deployment
+* Introduce sandboxed execution for generated code
+* Improve system scalability and deployment architecture
+* Redesign frontend experience for larger analytical workflows
+* Extend conversational memory capabilities
+* Support larger datasets and asynchronous processing
+* Add containerized deployment
 
 ---
 
-## Contributions
-
-This project was developed as a group final year project.
-
-Primary contribution areas:
+## My Contributions
 
 * Backend development
 * LLM integration
 * Analytics workflow
 * Evaluation pipeline
-* Conversation and visualization features
+* Conversation memory and visualization features
