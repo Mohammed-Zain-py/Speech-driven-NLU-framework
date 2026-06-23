@@ -2,6 +2,8 @@
 {% block title %}Chat{% endblock %}
 {% block content %}
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
 {% if file_uploaded %}
     <div class="alert alert-success" role="alert">
         File uploaded successfully! You are now querying a dataset with the columns: <strong>{{ columns|join(', ') }}</strong>
@@ -19,7 +21,7 @@
         <div class="card-footer">
             <form id="message-form">
                 <div class="input-group">
-                    <input type="text" class="form-control" id="user-input" placeholder="e.g., How many rows are there?" autocomplete="off">
+                    <input type="text" class="form-control" id="user-input" placeholder="e.g., Show me a bar chart of sales by department" autocomplete="off">
                     <button class="btn btn-primary" type="submit">Send</button>
                     <button class="btn btn-secondary" type="button" id="micButton">🎤</button>
                 </div>
@@ -32,6 +34,7 @@
         const messageForm = document.getElementById('message-form');
         const userInput = document.getElementById('user-input');
         const micButton = document.getElementById('micButton');
+        let chartCounter = 0;
 
         messageForm.addEventListener('submit', function (event) {
             event.preventDefault();
@@ -58,6 +61,17 @@
         }
 
         async function sendMessageToServer(messageText) {
+            userInput.disabled = true;
+            micButton.disabled = true;
+            
+            const thinkingId = 'thinking-' + Date.now();
+            const messageWrapper = document.createElement('div');
+            messageWrapper.id = thinkingId;
+            messageWrapper.classList.add('d-flex', 'mb-3', 'justify-content-start');
+            messageWrapper.innerHTML = `<div class="p-3 rounded bg-light text-muted"><i>🤖 Analyzing data...</i></div>`;
+            chatBox.appendChild(messageWrapper);
+            chatBox.scrollTop = chatBox.scrollHeight;
+
             try {
                 const response = await fetch('/get_response', {
                     method: 'POST',
@@ -65,40 +79,121 @@
                     body: JSON.stringify({ message: messageText })
                 });
                 
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 const data = await response.json();
                 
-                // Add the bot's text response to the chat window
-                addMessage(data.bot_text, 'bot');
+                document.getElementById(thinkingId).remove();
+                addMessage(data.bot_text, 'bot', data.chart_data);
 
-                // If an audio URL was successfully created, play the sound
                 if (data.audio_url) {
                     const audio = new Audio(data.audio_url);
                     audio.play();
                 }
 
             } catch (error) {
-                console.error("Error fetching response:", error);
+                console.error("Error:", error);
+                document.getElementById(thinkingId).remove();
                 addMessage("Sorry, there was a problem connecting to the server.", 'bot');
+            } finally {
+                userInput.disabled = false;
+                micButton.disabled = false;
+                userInput.focus();
             }
         }
 
-        function addMessage(text, sender) {
+        function addMessage(text, sender, chartData = null) {
             const messageWrapper = document.createElement('div');
             const messageBubble = document.createElement('div');
             messageWrapper.classList.add('d-flex', 'mb-3');
             messageBubble.classList.add('p-3', 'rounded');
-            messageBubble.textContent = text;
+            
+            const textElement = document.createElement('div');
+            textElement.textContent = text;
+            messageBubble.appendChild(textElement);
+
             if (sender === 'user') {
                 messageWrapper.classList.add('justify-content-end');
                 messageBubble.classList.add('bg-primary', 'text-white');
             } else {
                 messageWrapper.classList.add('justify-content-start');
                 messageBubble.classList.add('bg-light');
+                messageBubble.style.maxWidth = '75%';
             }
+
+            if (chartData) {
+                chartCounter++;
+                const canvasId = `chart-${chartCounter}`;
+                
+                const chartContainer = document.createElement('div');
+                chartContainer.style.width = '100%';
+                chartContainer.style.marginTop = '15px';
+                
+                const canvas = document.createElement('canvas');
+                canvas.id = canvasId;
+                chartContainer.appendChild(canvas);
+                messageBubble.appendChild(chartContainer);
+
+                setTimeout(() => {
+                    const ctx = document.getElementById(canvasId).getContext('2d');
+                    
+                    // Check if it is a pie chart
+                    const isPie = chartData.type === 'pie' || chartData.type === 'doughnut';
+
+                    // Enterprise Light Color Palette for Pie Charts
+                    const colorPalette = [
+                        'rgba(99, 102, 241, 0.85)',  // Indigo
+                        'rgba(16, 185, 129, 0.85)',  // Emerald
+                        'rgba(245, 158, 11, 0.85)',  // Amber
+                        'rgba(239, 68, 68, 0.85)',   // Red
+                        'rgba(139, 92, 246, 0.85)',  // Purple
+                        'rgba(6, 182, 212, 0.85)'    // Cyan
+                    ];
+
+                    const bgColors = isPie ? colorPalette : 'rgba(99, 102, 241, 0.85)';
+                    const hoverBgColors = isPie ? colorPalette.map(c => c.replace('0.85', '1')) : 'rgba(79, 70, 229, 1)';
+
+                    new Chart(ctx, {
+                        type: chartData.type || 'bar',
+                        data: {
+                            labels: chartData.labels,
+                            datasets: [{
+                                label: chartData.title || 'Analytics', 
+                                data: chartData.values,
+                                backgroundColor: bgColors, 
+                                hoverBackgroundColor: hoverBgColors,
+                                borderRadius: isPie ? 0 : 6, // No rounded corners on pie slices
+                                borderSkipped: false,
+                                maxBarThickness: 45
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            plugins: {
+                                // Force legend to show ONLY on pie charts so we know what the colors mean
+                                legend: { display: isPie, position: 'right' }, 
+                                // Add a nice title above the chart
+                                title: { display: true, text: chartData.title || 'Data Visualized', font: { size: 16 } },
+                                tooltip: {
+                                    backgroundColor: 'rgba(17, 24, 39, 0.9)',
+                                    padding: 12,
+                                    cornerRadius: 8,
+                                    displayColors: isPie // Show color boxes in tooltip for pie charts
+                                }
+                            },
+                            // Completely hide X/Y axes if it's a pie chart (they don't use axes!)
+                            scales: isPie ? {} : {
+                                x: { grid: { display: false } },
+                                y: {
+                                    beginAtZero: true,
+                                    grid: { color: 'rgba(0, 0, 0, 0.04)' }, 
+                                    border: { display: false }
+                                }
+                            }
+                        }
+                    });
+                }, 100);
+            }
+
             messageWrapper.appendChild(messageBubble);
             chatBox.appendChild(messageWrapper);
             chatBox.scrollTop = chatBox.scrollHeight;

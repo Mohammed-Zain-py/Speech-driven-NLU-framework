@@ -5,31 +5,29 @@ import os
 import time
 import google.generativeai as genai
 from gtts import gTTS
-# --- New Imports for Database ---
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
+from dotenv import load_dotenv
 
 # --- Gemini API Configuration ---
-GEMINI_API_KEY = "Type ur gemini api key here" # Make sure your key is here
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") # Make sure your key is here
 genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel('models/gemini-flash-latest')
+model = genai.GenerativeModel('models/gemini-3.5-flash')
 
 # --- Admin Credentials ---
-ADMIN_USER = "admin"
-ADMIN_PASS = "password123"
+ADMIN_USER = os.getenv('ADMIN_USER')
+ADMIN_PASS = os.getenv('ADMIN_PASS') # You can also create a .env file and move the API key and this password there 
 
 # --- In-memory data store ---
 data_frames = {}
 
 # --- Database Configuration ---
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'mysecretkey12345'
+app.config['SECRET_KEY'] = os.getenv('SECRET_KEY')
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
-# Set the database file path
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
 db = SQLAlchemy(app)
 
-# --- Define the Database Table Structure ---
 class ConversationLog(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), nullable=False)
@@ -38,7 +36,6 @@ class ConversationLog(db.Model):
     bot_response = db.Column(db.String(1000))
     timestamp = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
-# --- All your existing Flask routes will go here ---
 @app.route('/')
 def index():
     if 'username' in session:
@@ -72,7 +69,6 @@ def chat():
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
-    # ... (Keep this function exactly as it was)
     if 'username' not in session:
         return redirect(url_for('index'))
     file = request.files.get('file')
@@ -90,7 +86,6 @@ def upload_file():
         return "Error processing file. Check terminal for details.", 500
     return redirect(url_for('chat'))
 
-# --- This is the function we will update in the next step ---
 @app.route('/get_response', methods=['POST'])
 def get_response():
     user_question = request.json.get('message')
@@ -103,25 +98,37 @@ def get_response():
     df = data_frames[user_id]['df']
     columns = data_frames[user_id]['columns']
 
+    # --- MEMORY: Fetch the last 3 interactions ---
+    past_logs = ConversationLog.query.filter_by(username=username).order_by(ConversationLog.timestamp.desc()).limit(3).all()
+    history_text = ""
+    if past_logs:
+        history_text = "\n--- CONVERSATION HISTORY ---\n"
+        for log in reversed(past_logs): 
+            history_text += f"User: {log.user_question}\nSystem: {log.bot_response}\n"
+        history_text += "----------------------------\n"
+
     code_generation_prompt = f"""
-    You are an expert Python Pandas data analyst. Your task is to translate the user's question into a single, executable line of Python code for a pandas DataFrame named 'df'.
-    The DataFrame `df` has the following columns: {columns}
+    You are an expert Python Pandas data analyst. Translate the user's question into a single, executable line of Python code for a pandas DataFrame named 'df'.
+    Columns: {columns}
+    {history_text}
     --- RULES ---
     1. Your output MUST be a single line of Python code.
-    2. You MUST use the exact column names provided.
-    3. The code must produce a final result.
-    4. Do NOT add any explanation, comments, or the word "python".
-    5. If the question cannot be answered, return the word "Error: Unanswerable".
-    --- EXAMPLE ---
-    User Question: "How many people are in the Engineering department?"
-    Code: df[df['Department'] == 'Engineering'].shape[0]
+    2. Use the exact column names provided.
+    3. Do NOT add any explanation, comments, or the word "python".
+    4. MULTI-LANGUAGE RULE: If the user asks in Kannada, Hindi, or any mix of languages (e.g. Kanglish), internally translate it to understand the intent, but your final output MUST STILL BE ONLY RAW PYTHON CODE.
+    5. DATA VISUALIZATION: If the user asks for a chart, graph, or visual trend, your pandas code MUST return a Python dictionary with this exact structure: 
+       {{'labels': list_of_categorical_names_NOT_index_numbers, 'values': list_of_y_values, 'type': 'bar', 'title': 'A short title'}}
+       Example: {{'labels': df['Department'].tolist(), 'values': df['Total_Salary'].tolist(), 'type': 'bar', 'title': 'Salary by Dept'}}
     ---
     User Question: "{user_question}"
     Code:
     """
 
     bot_text = "I encountered an error. Please try rephrasing."
-    generated_code = "N/A" # Default value
+    generated_code = "N/A"
+    chart_data = None
+    lang_code = 'en' # Safety default
+
     try:
         response = model.generate_content(code_generation_prompt)
         generated_code = response.text.strip().replace('`', '').replace('python', '')
@@ -130,23 +137,45 @@ def get_response():
             bot_text = "I'm sorry, I can't answer that question with the available data."
         else:
             result = eval(generated_code, {"df": df, "pd": pd})
+            
+            if isinstance(result, dict) and 'labels' in result and 'values' in result:
+                chart_data = result
+                calculated_context = "Chart data generated successfully."
+            else:
+                calculated_context = str(result)
+
             answer_formatting_prompt = f"""
-            You are a helpful data assistant. Your task is to present a calculated result to a user in a friendly, complete sentence.
+            You are a helpful data assistant. 
             User's original question: "{user_question}"
-            The calculated answer is: {result}
-            RULES:
-            1. Be concise and natural.
-            2. Do not mention that a calculation was performed.
-            3. If the result is a table or a long list, summarize it briefly.
+            Calculated result: {calculated_context}
+            --- RULES ---
+            1. Be concise and natural. Do not mention that a calculation was performed.
+            2. If a chart was generated, simply say "Here is the chart you requested."
+            3. MULTI-LANGUAGE: You MUST reply in the exact same language/script the user asked the question in.
+            4. You MUST append the two-letter language code of your response at the very end, separated by '|||'. (Use 'kn' for Kannada, 'hi' for Hindi, 'en' for English).
             Answer:
             """
-            final_response = model.generate_content(answer_formatting_prompt)
-            bot_text = final_response.text.strip()
+            
+            final_response = model.generate_content(answer_formatting_prompt).text.strip()
+            
+            parts = final_response.split('|||')
+            bot_text = parts[0].strip()
+            lang_code = parts[1].strip().lower() if len(parts) > 1 else 'en'
+            
+            valid_langs = ['en', 'hi', 'kn', 'es', 'fr', 'de', 'it', 'pt', 'ta', 'te', 'ml']
+            if lang_code not in valid_langs:
+                lang_code = 'en'
 
     except Exception as e:
         print(f"--- EXECUTION OR API ERROR --- \n{e}\n--------------------------")
-        bot_text = "I encountered an error trying to answer that. Please try rephrasing your question."
-        generated_code = f"ERROR: {e}" # Log the error
+        # Smart fallback: If chart succeeded but text failed, just acknowledge the chart!
+        if chart_data:
+            bot_text = "Here is the visualization you requested. (Note: Audio response timed out)."
+        else:
+            bot_text = "I encountered an error trying to answer that. Let me provide the data in English instead."
+        
+        generated_code = f"ERROR: {e}"
+        lang_code = 'en'
 
     log_entry = ConversationLog(
         username=username,
@@ -157,21 +186,23 @@ def get_response():
     db.session.add(log_entry)
     db.session.commit()
 
+    audio_url = None
     try:
-        tts = gTTS(text=bot_text, lang='en', slow=False)
+        tts = gTTS(text=bot_text, lang=lang_code, slow=False)
         audio_file_path = os.path.join('static', 'response.mp3')
         tts.save(audio_file_path)
-
-        # --- THIS IS THE MODIFIED LINE ---
-        # We add a unique timestamp to the URL to prevent caching
         timestamp = int(time.time())
         audio_url = url_for('static', filename='response.mp3', t=timestamp)
+    except ValueError:
+        try:
+            print(f"Language {lang_code} rejected. Falling back to English audio.")
+            tts = gTTS(text=bot_text, lang='en', slow=False)
+            tts.save(audio_file_path)
+            audio_url = url_for('static', filename='response.mp3', t=int(time.time()))
+        except Exception as fallback_error:
+            print(f"Total audio failure: {fallback_error}")
 
-    except Exception as e:
-        print(f"gTTS Error: {e}")
-        audio_url = None
-
-    return jsonify({'bot_text': bot_text, 'audio_url': audio_url})
+    return jsonify({'bot_text': bot_text, 'audio_url': audio_url, 'chart_data': chart_data})
 
 @app.route('/dashboard')
 def dashboard():
@@ -180,42 +211,30 @@ def dashboard():
     if 'username' not in session:
         return redirect(url_for('index'))
         
-    # --- NEW: Code to read the accuracy score ---
-    accuracy_score = "N/A" # Default value if file doesn't exist
+    accuracy_score = "N/A" 
     try:
         with open('accuracy.txt', 'r') as f:
             accuracy_score = f.read().strip()
     except FileNotFoundError:
-        print("Accuracy file not found. Run 'python evaluate.py' first.")
-    except Exception as e:
-        print(f"Error reading accuracy file: {e}")
+        pass
             
-    # --- NEW: Query the database for all conversation logs ---
     try:
-        # Fetch all logs from the database, ordering by the most recent first
         all_logs = ConversationLog.query.order_by(ConversationLog.timestamp.desc()).all()
-        
-        # --- NEW: Perform simple analysis ---
         total_interactions = len(all_logs)
-        # Convert to DataFrame for easier analysis with Pandas
         df_logs = pd.DataFrame([(log.username, log.user_question) for log in all_logs], columns=['username', 'question'])
-        
         most_active_user = "N/A"
         if not df_logs.empty:
             most_active_user = df_logs['username'].mode()[0]
-
     except Exception as e:
-        print(f"Dashboard Error: {e}")
         all_logs = []
         total_interactions = 0
         most_active_user = "Error"
         
-    # Pass the logs and analytics to the template
     return render_template('dashboard.html', 
                            logs=all_logs, 
                            total_interactions=total_interactions,
                            most_active_user=most_active_user,
-                           accuracy_score=accuracy_score) # <-- ADDED THIS
+                           accuracy_score=accuracy_score)
 
 @app.route('/logout')
 def logout():
@@ -226,7 +245,6 @@ def logout():
     return redirect(url_for('index'))
 
 if __name__ == '__main__':
-    # --- Create the database file if it doesn't exist ---
     with app.app_context():
         db.create_all()
     app.run(debug=True, port=5000)
